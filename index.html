@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+        <title>Tic-Tac-Toe Tree</title>
+        <script src="d3/d3.v4.min.js"></script>
+    <style>
+      body, html { margin: 0; padding: 0; overflow: hidden; display: flex; height: 100vh; background-color: rgb(31,31,31); }
+      svg text {
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
+        user-select: none;
+      }
+      #panel {
+        width: 200px;
+        min-width: 200px;
+        height: 100vh;
+        background-color: rgb(24,24,24);
+        color: rgb(180,180,180);
+        font-family: sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding-top: 16px;
+        box-sizing: border-box;
+        position: fixed;
+        left: 0;
+        top: 0;
+        z-index: 10;
+      }
+      #panel h1 {
+        font-size: 15px;
+        font-weight: 600;
+        text-align: center;
+        margin: 0 0 12px 0;
+        padding: 0 8px;
+        color: rgb(210,210,210);
+        letter-spacing: 0.03em;
+      }
+      #panel h2 {
+        font-size: 13px;
+        font-weight: 600;
+        text-align: center;
+        margin: 12px 0 12px 0;
+        padding: 0 8px;
+        color: rgb(210,210,210);
+        letter-spacing: 0.03em;
+      }
+      #panel hr {
+        width: 80%;
+        border: none;
+        border-top: 1px solid rgb(70,70,70);
+        margin: 0 auto;
+      }
+      .stat-table {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        align-items: center;
+        width: 100%;
+      }
+      .stat-row {
+        display: flex;
+        gap: 5px;
+        font-size: 13px;
+        color: rgb(160,160,160);
+      }
+      .stat-row .stat-label {
+        color: rgb(120,120,120);
+        text-align: center;
+        width: 100px;
+      }
+      .stat-row .stat-value {
+        color: rgb(200,200,200);
+        font-variant-numeric: tabular-nums;
+        text-align: center;
+        width: 60px;
+      }
+      #initial-state-section {
+        width: 100%;
+      }
+      #initial-state-controls {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        padding: 0 8px 12px 8px;
+      }
+      #initial-board-container svg {
+        display: block;
+      }
+      #initial-board-buttons {
+        display: flex;
+        gap: 6px;
+        width: 150px;
+      }
+      #initial-board-buttons .action-btn {
+        flex: 1;
+        font-size: 11px;
+      }
+      #minimax-settings-section,
+      #tree-filtering-section {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      #minimax-settings-section .settings-rows {
+        padding-bottom: 12px;
+      }
+      #tree-filtering-section .settings-rows {
+        width: 85%;
+        align-self: center;
+        padding-bottom: 12px;
+      }
+      #playback-section .action-buttons {
+        margin-bottom: 8px;
+      }
+      .settings-rows {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 0 12px;
+        width: 100%;
+        box-sizing: border-box;
+      }
+      .settings-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 6px;
+      }
+      .settings-label {
+        font-size: 12px;
+        color: rgb(160,160,160);
+        flex: 1;
+      }
+      #chk-alphabeta {
+        accent-color: rgb(105,180,105);
+        width: 14px;
+        height: 14px;
+        cursor: pointer;
+        flex-shrink: 0;
+      }
+      #sel-ordering {
+        font-size: 11px;
+        font-family: sans-serif;
+        background: rgb(40,40,40);
+        color: rgb(180,180,180);
+        border: 1px solid rgb(80,80,80);
+        border-radius: 4px;
+        padding: 2px 4px;
+        cursor: pointer;
+        flex-shrink: 0;
+      }
+      #playback-section {
+        width: 100%;
+      }
+      #speed-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 0 12px 12px 12px;
+        width: 100%;
+        box-sizing: border-box;
+      }
+      #speed-row .settings-label {
+        flex: 0 0 auto;
+      }
+      #rng-speed {
+        width: 100px;
+        accent-color: rgb(105,180,105);
+        cursor: pointer;
+        flex-shrink: 0;
+      }
+      #speed-val {
+        font-size: 12px;
+        color: rgb(160,160,160);
+        width: 16px;
+        text-align: right;
+        flex-shrink: 0;
+      }
+      #middle-sections {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-evenly;
+        width: 100%;
+      }
+      #actions-section {
+        width: 100%;
+        padding-bottom: 12px;
+      }
+      .action-buttons {
+        display: flex;
+        gap: 8px;
+        justify-content: center;
+        padding: 0 12px;
+      }
+      .action-btn {
+        flex: 1;
+        padding: 5px 0;
+        font-size: 12px;
+        font-family: sans-serif;
+        font-weight: 600;
+        border: 1px solid rgb(80,80,80);
+        border-radius: 4px;
+        background: rgb(40,40,40);
+        color: rgb(180,180,180);
+        cursor: pointer;
+        letter-spacing: 0.03em;
+      }
+      .action-btn:hover:not(:disabled) {
+        background: rgb(55,55,55);
+        color: rgb(220,220,220);
+      }
+      .action-btn:disabled {
+        color: rgb(80,80,80);
+        border-color: rgb(55,55,55);
+        cursor: default;
+      }
+      #stats-section {
+        width: 100%;
+        padding-bottom: 12px;
+      }
+      #action-tooltip {
+        position: fixed;
+        z-index: 100;
+        background: rgb(50,50,50);
+        color: rgb(210,210,210);
+        font-family: sans-serif;
+        font-size: 11px;
+        padding: 4px 8px;
+        border-radius: 4px;
+        border: 1px solid rgb(90,90,90);
+        pointer-events: none;
+        white-space: nowrap;
+        display: none;
+      }
+      #rowlabels {
+        width: 25px;
+        min-width: 25px;
+        height: 100vh;
+        position: fixed;
+        left: 200px;
+        top: 0;
+        z-index: 10;
+        overflow: hidden;
+      }
+      .rowlabel {
+        position: absolute;
+        width: 25px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        font-family: sans-serif;
+        font-size: 13.5px;
+        letter-spacing: 0.15em;
+        transform: translateY(-50%);
+        cursor: pointer;
+      }
+      #viz {
+        margin-left: 225px;
+        overflow-x: auto;
+        overflow-y: hidden;
+        height: 100vh;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="panel">
+      <h1>Minimax Visualizer</h1>
+      <hr>
+      <div id="initial-state-section">
+        <hr>
+        <h2>Initial State</h2>
+        <div id="initial-state-controls">
+          <div id="initial-board-container"></div>
+          <div id="initial-board-buttons">
+            <button id="btn-undo" class="action-btn" disabled>↩ Undo</button>
+            <button id="btn-reset" class="action-btn">✕ Clear</button>
+          </div>
+        </div>
+      </div>
+      <div id="middle-sections">
+        <div id="minimax-settings-section">
+          <hr>
+          <h2>Minimax Settings</h2>
+          <div class="settings-rows">
+            <div class="settings-row">
+              <label class="settings-label" for="chk-alphabeta">Alpha-Beta Pruning</label>
+              <input type="checkbox" id="chk-alphabeta" checked>
+            </div>
+            <div class="settings-row">
+              <label class="settings-label" for="sel-ordering">Move Ordering</label>
+              <select id="sel-ordering">
+                <option value="heuristic" selected>Heuristic</option>
+                <option value="off">Off</option>
+                <option value="reversed">Reversed</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div id="tree-filtering-section">
+          <hr>
+          <h2>Tree Filtering</h2>
+          <div class="settings-rows">
+            <div class="settings-row">
+              <label class="settings-label" for="chk-forced">Play Forced</label>
+              <input type="checkbox" id="chk-forced" checked>
+            </div>
+            <div class="settings-row">
+              <label class="settings-label" for="chk-symmetry">Check Symmetry</label>
+              <input type="checkbox" id="chk-symmetry" checked>
+            </div>
+          </div>
+        </div>
+        <div id="playback-section">
+          <hr>
+          <h2>Playback</h2>
+          <div class="action-buttons">
+            <button id="btn-play" class="action-btn">▶</button>
+            <button id="btn-step" class="action-btn">▷|</button>
+            <button id="btn-stop" class="action-btn" disabled>■</button>
+          </div>
+          <div id="speed-row">
+            <label class="settings-label" for="rng-speed">Speed</label>
+            <input type="range" id="rng-speed" min="1" max="10" value="3">
+            <span id="speed-val">3</span>
+          </div>
+        </div>
+        <div id="actions-section">
+          <hr>
+          <h2>Actions</h2>
+          <div class="action-buttons">
+            <button id="btn-redraw" class="action-btn" disabled>Redraw</button>
+            <button id="btn-revert" class="action-btn" disabled>Revert</button>
+            <button id="btn-restore" class="action-btn" disabled>Reset</button>
+          </div>
+        </div>
+      </div>
+      <div id="stats-section">
+        <hr>
+        <h2>Statistics</h2>
+        <div id="stats-table" class="stat-table"></div>
+      </div>
+    </div>
+    <div id="action-tooltip"></div>
+    <div id="rowlabels"></div>
+    <div id="viz">
+      <script type="text/javascript" src="myViz.js"></script>
+    </div>
+  </body>
+</html>
