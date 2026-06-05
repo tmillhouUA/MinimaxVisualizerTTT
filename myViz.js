@@ -490,7 +490,7 @@ function buildTree(){
     }
 
     // Build tree
-    const rootNode = { board: ref.board, children: [], parent: null, x: 0, y: 0 }
+    const rootNode = { board: ref.board, children: [], parent: null, x: 0, y: 0, depth: 0 }
     const levels = [[rootNode]]
     let currentLevel = [rootNode]
     while(currentLevel.length > 0){
@@ -498,7 +498,7 @@ function buildTree(){
         for(const node of currentLevel){
             if(!ref.isTerminal(node.board).terminal){
                 for(const s of succFunc(node.board)){
-                    const child = { board: s.board, move: s.move, children: [], parent: node, x: 0, y: 0, pruned: true }
+                    const child = { board: s.board, move: s.move, children: [], parent: node, x: 0, y: 0, pruned: true, depth: node.depth + 1 }
                     node.children.push(child)
                     nextLevel.push(child)
                 }
@@ -693,17 +693,47 @@ function buildTree(){
 
     // Build _stepEvents by mirroring the DFS order of the minimax algorithm:
     //   visit → recurse children (or emit prune for cut branches) → return
-    function buildEvents(node){
+    // When alpha-beta is active, also emits:
+    //   'bound'      — a child's returned value tightened alpha or beta for this call frame;
+    //                  the annotation moves to that child node at its depth.
+    //   'clearBounds' — emitted just before the return event; clears annotations at depth+1
+    //                  since that call frame's bounds are no longer active.
+    function buildEvents(node, alpha = -Infinity, beta = Infinity, alphaNode = null, betaNode = null){
         const isTerminal = ref.isTerminal(node.board).terminal
         _stepEvents.push({ type: 'visit', node, terminal: isTerminal })
         if(!isTerminal){
-            for(const child of node.children){
+            const [, player] = ref.turnCounter(node.board)
+            for(let ci = 0; ci < node.children.length; ci++){
+                const child = node.children[ci]
                 if(child.pruned){
-                    _stepEvents.push({ type: 'prune', nodes: collectSubtree(child) })
+                    const cutKind = player === 1 ? 'beta-cutoff' : 'alpha-cutoff'
+                    _stepEvents.push({ type: 'prune', nodes: collectSubtree(child), cutKind })
                 } else {
-                    buildEvents(child)
+                    buildEvents(child, alpha, beta, alphaNode, betaNode)
+                    if(useAlphaBeta){
+                        const v = child.mmValue
+                        const hasNextSibling = ci + 1 < node.children.length
+                        if(player === 1){ // MAX node — alpha tightens on child return
+                            if(v > alpha){
+                                alpha = v
+                                alphaNode = child
+                            }
+                            // Annotate the current alpha source before the next sibling is visited
+                            if(hasNextSibling && alphaNode !== null)
+                                _stepEvents.push({ type: 'bound', kind: 'alpha', node: alphaNode })
+                        } else {          // MIN node — beta tightens on child return
+                            if(v < beta){
+                                beta = v
+                                betaNode = child
+                            }
+                            if(hasNextSibling && betaNode !== null)
+                                _stepEvents.push({ type: 'bound', kind: 'beta', node: betaNode })
+                        }
+                    }
                 }
             }
+            // Leaving this call frame: clear bound annotations at the children's depth
+            if(useAlphaBeta) _stepEvents.push({ type: 'clearBounds', depth: node.depth + 1 })
             _stepEvents.push({ type: 'return', node })
         }
     }
@@ -730,6 +760,8 @@ function buildTree(){
 let _playState = 'stopped'   // 'stopped' | 'playing' | 'paused'
 let _playTimer = null
 let _playSpeed = 3           // fps, 1–10
+let _alphaBoundNode = {}  // depth → node currently annotated as alpha source at that depth
+let _betaBoundNode  = {}  // depth → node currently annotated as beta source at that depth
 
 const _controlSections = [
     'initial-state-section', 'minimax-settings-section',
@@ -744,7 +776,15 @@ function eachNode(fn){
         else if(evt.type === 'prune') evt.nodes.forEach(fn)
 }
 
+function clearAllBoundAnnotations(){
+    for(const depth of Object.keys(_alphaBoundNode)) clearBoundsAtDepth(+depth)
+    for(const depth of Object.keys(_betaBoundNode))  clearBoundsAtDepth(+depth)
+    _alphaBoundNode = {}
+    _betaBoundNode  = {}
+}
+
 function hideAllExceptRoot(){
+    clearAllBoundAnnotations()
     eachNode(n => {
         const hide = n.parent !== null
         n.gridInst.group.attr('opacity', hide ? 0 : 1)
@@ -765,6 +805,7 @@ function hideAllExceptRoot(){
 }
 
 function showFullTree(){
+    clearAllBoundAnnotations()
     eachNode(n => {
         const op = n.pruned ? 0.25 : 1
         n.gridInst.group.attr('opacity', op)
@@ -780,7 +821,7 @@ function showFullTree(){
 }
 
 function flashEmphasis(field, edge, normalFieldStroke, normalEdgeStroke){
-    const flashDuration = 500 / _playSpeed  // half the frame time in ms
+    const flashDuration = _playState === 'playing' ? 500 / _playSpeed : 500 / 3
     field.attr('stroke-width', '6px')
     if(edge) edge.attr('stroke-width', 4)
     setTimeout(() => {
@@ -789,6 +830,66 @@ function flashEmphasis(field, edge, normalFieldStroke, normalEdgeStroke){
         if(normalFieldStroke) field.attr('stroke', normalFieldStroke)
         if(normalEdgeStroke && edge) edge.attr('stroke', normalEdgeStroke)
     }, flashDuration)
+}
+
+function clearBoundAnnotation(node, kind){
+    if(!node) return
+    const key = kind === 'alpha' ? '_alphaBoundEl' : '_betaBoundEl'
+    if(node[key]){ node[key].remove(); node[key] = null }
+}
+
+function clearBoundsAtDepth(depth){
+    const a = _alphaBoundNode[depth]
+    const b = _betaBoundNode[depth]
+    if(a){ clearBoundAnnotation(a, 'alpha'); delete _alphaBoundNode[depth] }
+    if(b){ clearBoundAnnotation(b, 'beta');  delete _betaBoundNode[depth]  }
+}
+
+function setBoundAnnotation(node, kind){
+    const e = boardSize
+    const color = kind === 'alpha' ? COLOR_WIN.vibrant : COLOR_LOSE.vibrant
+    const label = kind === 'alpha' ? 'α' : 'β'
+    const inset = 8   // how far outside the field rect the outer rect extends
+    const g = node.gridInst.group
+
+    // Outer dashed rect wrapping the board
+    const outerRect = g.append('rect')
+        .attr('x', -2 - inset).attr('y', -2 - inset)
+        .attr('width', e + 4 + inset * 2).attr('height', e + 4 + inset * 2)
+        .attr('rx', e / 10)
+        .attr('fill', 'none')
+        .attr('stroke', color)
+        .attr('stroke-width', 1.5)
+        .attr('stroke-dasharray', '3,3')
+
+    // Background rect punches a gap in the dashed stroke so the label is readable.
+    // Center it on the top-left corner of the outer rect.
+    const fontSize = 12
+    const bgW = fontSize + 4
+    const bgH = fontSize + 4
+    const cornerX = -2 - inset   // top-left x of outer rect
+    const cornerY = -2 - inset   // top-left y of outer rect
+    const bgX = cornerX - bgW / 2
+    const bgY = cornerY - bgH / 2
+    const bgRect = g.append('rect')
+        .attr('x', bgX).attr('y', bgY)
+        .attr('width', bgW).attr('height', bgH)
+        .attr('fill', 'rgb(31,31,31)')
+        .attr('rx', 2)
+
+    const text = g.append('text')
+        .attr('x', cornerX).attr('y', cornerY)
+        .attr('text-anchor', 'middle')
+        .attr('dominant-baseline', 'central')
+        .attr('font-family', 'sans-serif')
+        .attr('font-size', `${fontSize}px`)
+        .attr('font-weight', 'bold')
+        .attr('fill', color)
+        .text(label)
+
+    // Group all three elements so they can be removed together
+    const key = kind === 'alpha' ? '_alphaBoundEl' : '_betaBoundEl'
+    node[key] = { remove(){ outerRect.remove(); bgRect.remove(); text.remove() } }
 }
 
 function applyStep(idx){
@@ -824,6 +925,21 @@ function applyStep(idx){
         }
         evt.node.gridInst.field.attr('stroke-opacity', 1)
         flashEmphasis(evt.node.gridInst.field, evt.node.edgeSel, finalFieldStroke, finalEdgeStroke)
+    } else if(evt.type === 'bound'){
+        const d = evt.node.depth
+        if(evt.kind === 'alpha'){
+            if(_alphaBoundNode[d] === evt.node) return
+            clearBoundAnnotation(_alphaBoundNode[d], 'alpha')
+            _alphaBoundNode[d] = evt.node
+            setBoundAnnotation(evt.node, 'alpha')
+        } else {
+            if(_betaBoundNode[d] === evt.node) return
+            clearBoundAnnotation(_betaBoundNode[d], 'beta')
+            _betaBoundNode[d] = evt.node
+            setBoundAnnotation(evt.node, 'beta')
+        }
+    } else if(evt.type === 'clearBounds'){
+        clearBoundsAtDepth(evt.depth)
     } else if(evt.type === 'prune'){
         evt.nodes.forEach(n => {
             n.gridInst.group.attr('opacity', 0.25)
