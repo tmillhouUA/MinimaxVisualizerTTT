@@ -27,7 +27,7 @@ const sidePadding = 125
 
 let forced = true
 let useSymmetry = true
-let useAlphaBeta = true
+let useAlphaBeta = false
 let moveOrdering = 'heuristic'  // 'heuristic' | 'off' | 'reversed'
 
 
@@ -1148,7 +1148,7 @@ function settingsMatch(a, b){
 }
 
 function defaultSettings(){
-    return { forced: true, useSymmetry: true, moveOrdering: 'heuristic', useAlphaBeta: true, startBoard: _initBoardDefault() }
+    return { forced: true, useSymmetry: true, moveOrdering: 'heuristic', useAlphaBeta: false, startBoard: _initBoardDefault() }
 }
 
 function updateActionButtons(){
